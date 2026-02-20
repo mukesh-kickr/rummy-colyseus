@@ -6,6 +6,7 @@ import { shuffle } from "../utils/suffle.js";
 import { selectWildJoker, applyWildJoker } from "../game/joker.js";
 import { handleDraw } from "../handlers/draw.handler.js";
 import { handleDiscard } from "../handlers/discard.handler.js";
+import { handleDeclare } from "../handlers/diclare.handler.js";
 
 export class RummyRoom extends Room<RummyState> {
   maxClients: number = 2;
@@ -26,6 +27,10 @@ export class RummyRoom extends Room<RummyState> {
       console.log("Discard received from", client.sessionId);
       handleDiscard(this, client, message);
     });
+    this.onMessage("declare", (client, message) => {
+      console.log("Declared payload recieved : ", message)
+      handleDeclare(this, client, message);
+    })
   }
 
   onJoin(client: Client<any>, options?: any, auth?: any): void | Promise<any> {
