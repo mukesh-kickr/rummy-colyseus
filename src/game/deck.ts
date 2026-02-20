@@ -44,4 +44,6 @@ export function generateDeck(): Card[]{
     return deck;
 
 }
-
+export function rankValue(rank: string):number {
+  return RANKS.indexOf(rank);
+}
