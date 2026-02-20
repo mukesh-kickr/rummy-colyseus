@@ -31,6 +31,14 @@ export class RummyRoom extends Room<RummyState> {
       console.log("Declared payload recieved : ", message)
       handleDeclare(this, client, message);
     })
+    this.onMessage("playAgain", (client) => {
+      const player = this.state.players.get(client.sessionId);
+      if (player) {
+        player.isReady = true;
+        console.log(`${client.sessionId} is again ready to play`)
+        this.checkRestartGame();
+      }
+    })
   }
 
   onJoin(client: Client<any>, options?: any, auth?: any): void | Promise<any> {
@@ -75,6 +83,14 @@ export class RummyRoom extends Room<RummyState> {
   }
 
   initializeGame() {
+    this.state.players.forEach((player:Player) => {
+      player.hand.clear();
+      player.isReady = false;
+      player.hasDrawn = false;
+      player.hasDeclared = false;
+    });
+    this.state.deck.clear();
+    this.state.discardPile.clear();
     const rawDeck = generateDeck();
     // console.log(" Deck : ", rawDeck);
     const suffledDeck = shuffle(rawDeck);
@@ -141,4 +157,23 @@ export class RummyRoom extends Room<RummyState> {
 
     console.log("Turn switched to:", nextPlayerId);
   }
+  checkRestartGame() {
+    if (this.state.status !== "finished") {
+      return;
+    }
+    let allReady = true;
+    this.state.players.forEach((player:Player) => {
+      if (!player.isReady) {
+        allReady = false;
+      }
+    })
+    if (allReady && this.state.players.size === 2) {
+      this.restartGame();
+    }
+  }
+  restartGame() {
+    console.log("Restarting game.. .")
+    this.state.status = "dealing";
+    this.initializeGame();
+}
 }
