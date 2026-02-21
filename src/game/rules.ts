@@ -23,14 +23,31 @@ export function isPureSequence(cards:Card[]):boolean {
 }
 
 export function isConsecutive(cards: Card[]): boolean{
-    const sorted = [...cards].sort((a, b) => rankValue(a.rank) - rankValue(b.rank));
-    for (let i = 1; i < sorted.length; i++){
-        const diff = rankValue(sorted[i].rank) - rankValue(sorted[i - 1].rank);
+    const sortedLow = [...cards].sort((a, b) => rankValue(a.rank) - rankValue(b.rank));
+    let isLowValid = true;
+    for (let i = 1; i < sortedLow.length; i++){
+        const diff = rankValue(sortedLow[i].rank) - rankValue(sortedLow[i - 1].rank);
         if (diff !== 1) {
-            return false;
+            isLowValid = false;
+            break;
         }
     }
-    return true;
+    if (isLowValid) {
+        return true;
+    } 
+
+    const sortedHigh = [...cards].sort((a, b) => highRankValue(a.rank) - highRankValue(b.rank));
+    let isHighValid = true;
+    for (let i = 1; i < sortedHigh.length; i++) {
+      const diff =
+        rankValue(sortedLow[i].rank) - rankValue(sortedLow[i - 1].rank);
+      if (diff !== 1) {
+        isHighValid = false;
+        break;
+      }
+    }
+
+    return isHighValid;
 }
 
 export function isValidSequence(cards:Card[]):boolean {
@@ -59,19 +76,22 @@ export function canFormConsecutiveWithJokers(cards: Card[]): boolean{
     if (nonJokers.length === 0) {
         return true;
     }
-    const sorted = [...nonJokers].sort((a, b) => rankValue(a.rank) - rankValue(b.rank));
-    let requiredJokers = 0;
-    for (let i = 1; i < sorted.length; i++){
-        const diff = rankValue(sorted[i].rank) - rankValue(sorted[i - 1].rank);
-        if (diff === 0) {
-            return false;
+    const checkSequence = (useAceHigh: boolean) => {
+        const getValue = (rank: string) => useAceHigh && rank === "A" ? 13 : rankValue(rank);
+        const sorted = [...nonJokers].sort((a, b) => getValue(a.rank) - getValue(b.rank))
+        let jokersRequired = 0;
+        for (let i = 1; i < sorted.length; i++){
+            let diff = getValue(sorted[i].rank) - getValue(sorted[i - 1].rank);
+            if (diff === 0) {
+                return false;
+            }
+            if (diff > 1) {
+                jokersRequired += (diff - 1);
+            }
         }
-        if (diff > 1) {
-            requiredJokers += (diff - 1);
-        }
+        return jokers.length >= jokersRequired;
     }
-
-    return jokers.length >= requiredJokers;
+    return checkSequence(false) || checkSequence(true);
 
 }
 
@@ -90,74 +110,6 @@ export function isValidSet(cards: Card[]): boolean{
     const suits = new Set(nonJokers.map((card) => card.suit));
     return suits.size === nonJokers.length;
 }
-export function isValidHand(hand: Card[], wildJoker: Card) { 
-    const groups = autoGroup(hand);
-    let hasPureSequence = false;
-    for (let group of groups) {
-        if (isPureSequence(group)) {
-            hasPureSequence = true;
-        }
-    }
-    if (!hasPureSequence) {
-        return {valid:false, reason:"No pure sequence"}
-    }
-    const allValid = groups.every((group) =>
-        isPureSequence(group) ||
-        isValidSequence(group) ||
-        isValidSet(group)
-    )
-    if (!allValid) {
-      return { valid: false, reason: "Invalid grouping" };
-    }
-
-    return { valid: true };
-}
-    
-export function autoGroup(hand: Card[]) {
-    const cards = [...hand]
-    const groups: any[][] = [];
-    extractGroups(cards, groups, isPureSequence);
-    extractGroups(cards, groups, isValidSequence);
-    extractGroups(cards, groups, isValidSet);
-    if (cards.length > 0) {
-        groups.push(cards)
-    }
-
-    return groups;
-    
-}
-
-function extractGroups(
-  cards: Card[],
-  groups: Card[][],
-  validator: (group: Card[]) => boolean,
-) {
-  let found = true;
-
-  while (found) {
-    found = false;
-
-    for (let size = 3; size <= cards.length; size++) {
-      for (let i = 0; i <= cards.length - size; i++) {
-        const attempt = cards.slice(i, i + size);
-
-        if (validator(attempt)) {
-          groups.push(attempt);
-          removeCards(cards, attempt);
-          found = true;
-          break;
-        }
-      }
-      if (found) break;
-    }
-  }
-}
-
-function removeCards(cards: Card[], toRemove: Card[]) {
-    toRemove.forEach((card) => {
-        const index = cards.findIndex((c) => c.id === card.id)
-        if (index !== -1) {
-            cards.splice(index, 1);
-        }
-    })
+function highRankValue(rank: string): number{
+    return rank === "A" ? 13 : rankValue(rank);
 }
