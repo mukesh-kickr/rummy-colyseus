@@ -1,5 +1,7 @@
 import { Client } from "colyseus";
 import { RummyRoom } from "../rooms/RummyRoom.js";
+import { shuffle } from "../utils/suffle.js";
+import { Card } from "../schema/Card.js";
 
 export function handleDraw(room: RummyRoom, client: Client, message:any) {
     const playerId = client.sessionId;
@@ -18,26 +20,51 @@ export function handleDraw(room: RummyRoom, client: Client, message:any) {
     if (player.hasDrawn) {
         return
     }
-    let drawnCard;
     if (message.source === "deck") {
-        drawnCard = room.state.deck.pop();
+        if (room.state.deck.length === 0) {
+            console.log("Deck is empty! Resuffling the discard pile...");
+            if (room.state.discardPile.length <= 1) {
+                console.log("Not enough cards to suffle! Match ends in draw!");
+                room.state.status = "finished";
+                room.broadcast("result", {
+                    valid: false,
+                    reason: "Match ended in draw.(No cards left)"
+                })
+                return;
+            }
+            const topDiscardCard = room.state.discardPile.pop();
+            const cardsToSuffle = [];
+            while (room.state.discardPile.length > 0) {
+                cardsToSuffle.push(room.state.discardPile.pop());
 
-        if (!drawnCard) {
-          console.log("Deck empty");
-          return;
+            }
+            const newDeck = shuffle(cardsToSuffle);
+            newDeck.forEach((card: Card) => {
+                if (card) {
+                    room.state.deck.push(card);
+                }
+            })
+            if (topDiscardCard) {
+                room.state.discardPile.push(topDiscardCard);
+            }
+        
+        }
+        const drawnCard = room.state.deck.pop();
+        if (drawnCard) {
+            player.hand.push(drawnCard);
+            player.hasDrawn = true;
+            console.log(`${playerId} drew a card`);
         }
     } else if (message.source === "discard") {
-        drawnCard = room.state.discardPile.pop();
-        if (!drawnCard) {
-          console.log("Discard empty");
-          return;
+        if (room.state.discardPile.length === 0) {
+            console.log("Discard pile is empty!");
+            return;
         }
-    } else {
-        console.log("Invalid draw source");
-        return;
-    }
-
-    player.hand.push(drawnCard);
-    player.hasDrawn = true;
-    console.log(`${playerId} drew ${drawnCard.rank} ${drawnCard.suit}`);
+        const drawnCard = room.state.discardPile.pop();
+        if (drawnCard) {
+            player.hand.push(drawnCard);
+            player.hasDrawn = true;
+            console.log(`${playerId} drew card from discardPile!`);
+        }
+    } 
 }
