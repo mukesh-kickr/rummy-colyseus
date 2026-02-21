@@ -32,6 +32,38 @@ export function handleDeclare(room: RummyRoom, client: Client, message: any) {
     return;
   }
 
+  const declaredCardIds = new Set<string>();
+  melds.forEach((meld: any[]) => {
+    meld.forEach((card: Card) => declaredCardIds.add(card.id));
+  })
+  declaredCardIds.add(discardCardId);
+  if (declaredCardIds.size !== 14 || player.hand.length !== 14) {
+    console.log(`${playerId} sumbmited wrong number of cards!`)
+    room.broadcast("result", {
+      winner: playerId,
+      valid: false,
+      reason:"Invalid card count detected."
+    })
+    return;
+  }
+  const serverHandIds = new Set(player.hand.map((card: Card) => card.id));
+  let ownAllCards = true;
+  for (let id of declaredCardIds) {
+    if (!serverHandIds.has(id)) {
+      ownAllCards = false;
+      break;
+    }
+  }
+  if (!ownAllCards) {
+    console.log(`${playerId} tried to declare cards they do not own!`);
+    room.broadcast("result", {
+      valid: false,
+      winner: playerId,
+      reason:"Card mismatch error!"
+    })
+    return;
+  }
+
   let hasPureSequence = false;
   let allValid = true;
   for (const meld of melds) {
