@@ -1,4 +1,4 @@
-import { Room, Client } from "colyseus";
+import { Room, Client, Delayed } from "colyseus";
 import { RummyState } from "../schema/RummyState.js";
 import { Player } from "../schema/Player.js";
 import { generateDeck } from "../game/deck.js";
@@ -10,6 +10,9 @@ import { handleDeclare } from "../handlers/diclare.handler.js";
 
 export class RummyRoom extends Room<RummyState> {
   maxClients: number = 2;
+  private turnInterval!: Delayed;
+  private readonly TURN_TIME_SECONDS = 30;
+
 
   onCreate(options: any): void | Promise<any> {
     this.setState(new RummyState());
@@ -26,10 +29,16 @@ export class RummyRoom extends Room<RummyState> {
     this.onMessage("discard", (client, message) => {
       console.log("Discard received from", client.sessionId);
       handleDiscard(this, client, message);
+      if (this.state.currentTurn !== client.sessionId && this.state.status === "playing") {
+        this.startTurnTimer();
+      }
     });
     this.onMessage("declare", (client, message) => {
       console.log("Declared payload recieved : ", message)
       handleDeclare(this, client, message);
+      if (this.state.status === "finished" && this.turnInterval) {
+        this.turnInterval.clear();
+      }
     })
     this.onMessage("playAgain", (client) => {
       const player = this.state.players.get(client.sessionId);
@@ -113,6 +122,7 @@ export class RummyRoom extends Room<RummyState> {
 
     this.state.currentTurn = this.clients[0].sessionId;
     this.state.status = "playing";
+    this.startTurnTimer();
     console.log("Game initialized");
   }
 
@@ -156,6 +166,7 @@ export class RummyRoom extends Room<RummyState> {
     this.state.currentTurn = nextPlayerId;
 
     console.log("Turn switched to:", nextPlayerId);
+    this.startTurnTimer();
   }
   checkRestartGame() {
     if (this.state.status !== "finished") {
@@ -175,5 +186,48 @@ export class RummyRoom extends Room<RummyState> {
     console.log("Restarting game.. .")
     this.state.status = "dealing";
     this.initializeGame();
-}
+  }
+  
+  startTurnTimer() {
+    this.state.turnTimeRemaining = this.TURN_TIME_SECONDS;
+    if (this.turnInterval) {
+      this.turnInterval.clear();
+    }
+    this.turnInterval = this.clock.setInterval(() => {
+      if (this.state.status !== "playing") {
+        this.turnInterval.clear();
+        return;
+      }
+      this.state.turnTimeRemaining -= 1;
+      if (this.state.turnTimeRemaining <= 0) {
+        this.handleTimeout();
+      }
+    },1000)
+  }
+  handleTimeout() {
+    const currentPlayerId = this.state.currentTurn;
+    const player = this.state.players.get(currentPlayerId);
+    if (!player) {
+      return
+    }
+      console.log(`Times up for ${currentPlayerId}`);
+      if (!player.hasDrawn) {
+        const drawnCard = this.state.deck.pop();
+        if (drawnCard) {
+          player.hand.push(drawnCard);
+          player.hasDrawn = true;
+        }
+      }
+    if (player.hand.length > 0) {
+      const randomIndex = Math.floor(Math.random() * player.hand.length);
+      const [discardedCard] = player.hand.splice(randomIndex, 1);
+      if (discardedCard) {
+        this.state.discardPile.push(discardedCard);
+        console.log(`Discarded ${discardedCard.rank} of ${discardedCard.suit}`);
+      }
+    }
+    player.hasDrawn = false;
+    this.nextTurn();
+    
+  }
 }
