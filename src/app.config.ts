@@ -18,7 +18,7 @@ const server = defineServer({
      * Define your room handlers:
      */
     rooms: {
-        rummy: defineRoom(RummyRoom)
+        rummy: defineRoom(RummyRoom).filterBy(['maxClients'])
     },
 
     /**
