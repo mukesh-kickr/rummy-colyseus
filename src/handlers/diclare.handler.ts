@@ -5,7 +5,7 @@ import { Card } from "../schema/Card.js";
 
 export function handleDeclare(room: RummyRoom, client: Client, message: any) {
   const playerId = client.sessionId;
-
+  const wildJoker = room.state.wildJoker;
   if (room.state.currentTurn !== playerId) {
     console.log("Not your turn to declare");
     return;
@@ -84,7 +84,7 @@ export function handleDeclare(room: RummyRoom, client: Client, message: any) {
   }
 
   for (const meld of melds) {
-    if (!isPureSequence(meld) && !isValidSequence(meld) && !isValidSet(meld)) {
+    if (!isPureSequence(meld) && !isValidSequence(meld,wildJoker) && !isValidSet(meld,wildJoker)) {
       allValid = false;
       break;
     }

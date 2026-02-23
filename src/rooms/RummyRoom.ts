@@ -9,13 +9,14 @@ import { handleDiscard } from "../handlers/discard.handler.js";
 import { handleDeclare } from "../handlers/diclare.handler.js";
 
 export class RummyRoom extends Room<RummyState> {
-  maxClients: number = 2;
+  private turnOrder: string[] = [];
   private turnInterval!: Delayed;
   private readonly TURN_TIME_SECONDS = 30;
 
 
   onCreate(options: any): void | Promise<any> {
     this.setState(new RummyState());
+    this.maxClients = options.maxPlayers || 2;
     console.log("Rummy Room created!");
 
     this.onMessage("start", (client) => {
@@ -58,7 +59,7 @@ export class RummyRoom extends Room<RummyState> {
 
     this.state.players.set(client.sessionId, player);
 
-    if (this.clients.length === 2) {
+    if (this.clients.length === this.maxClients) {
       console.log("Two players ready");
 
       this.tryStartGame();
@@ -70,7 +71,7 @@ export class RummyRoom extends Room<RummyState> {
 
     this.state.players.delete(client.sessionId);
 
-    if (this.clients.length < 2) {
+    if (this.clients.length < this.maxClients) {
       this.state.status = "waiting";
       this.state.currentTurn = "";
 
@@ -82,7 +83,7 @@ export class RummyRoom extends Room<RummyState> {
     if (this.state.status !== "waiting") {
       return;
     }
-    if (this.state.players.size < 2) {
+    if (this.state.players.size < this.maxClients) {
       return;
     }
 
@@ -93,13 +94,13 @@ export class RummyRoom extends Room<RummyState> {
 
   initializeGame() {
     this.state.players.forEach((player:Player) => {
-      player.hand.clear();
+      player.hand.splice(0, player.hand.length);
       player.isReady = false;
       player.hasDrawn = false;
       player.hasDeclared = false;
     });
-    this.state.deck.clear();
-    this.state.discardPile.clear();
+    this.state.deck.splice(0, this.state.deck.length);
+    this.state.discardPile.splice(0,this.state.discardPile.length);
     const rawDeck = generateDeck();
     // console.log(" Deck : ", rawDeck);
     const suffledDeck = shuffle(rawDeck);
@@ -108,8 +109,6 @@ export class RummyRoom extends Room<RummyState> {
     const wildJoker = selectWildJoker(suffledDeck);
     applyWildJoker(suffledDeck, wildJoker.rank);
     this.state.wildJoker = wildJoker;
-
-    this.state.deck.clear();
     suffledDeck.forEach((card) => this.state.deck.push(card));
 
     this.dealCards();
@@ -119,8 +118,8 @@ export class RummyRoom extends Room<RummyState> {
     if (firstOpenCard) {
       this.state.discardPile.push(firstOpenCard);
     }
-
-    this.state.currentTurn = this.clients[0].sessionId;
+    this.turnOrder = Array.from(this.state.players.keys());
+    this.state.currentTurn = this.turnOrder[0];
     this.state.status = "playing";
     this.startTurnTimer();
     console.log("Game initialized");
@@ -146,19 +145,12 @@ export class RummyRoom extends Room<RummyState> {
   }
 
   nextTurn() {
-    const playerIds = Array.from(this.state.players.keys());
-
-    if (playerIds.length !== 2) {
-      console.log("Turn switch requires 2 players");
+    if (this.turnOrder.length === 0) {
       return;
     }
-
-    const nextPlayerId = playerIds.find((id) => id !== this.state.currentTurn);
-
-    if (!nextPlayerId) {
-      console.log("Opponent not found");
-      return;
-    }
+    const currentIndex = this.turnOrder.indexOf(this.state.currentTurn);
+    const nextIndex = (currentIndex + 1) % this.turnOrder.length;
+    const nextPlayerId = this.turnOrder[nextIndex];
     const nextPlayer = this.state.players.get(nextPlayerId);
     if (nextPlayer) {
       nextPlayer.hasDrawn = false;
@@ -172,13 +164,13 @@ export class RummyRoom extends Room<RummyState> {
     if (this.state.status !== "finished") {
       return;
     }
-    let allReady = true;
+    let readyCount = 0;
     this.state.players.forEach((player:Player) => {
-      if (!player.isReady) {
-        allReady = false;
+      if (player.isReady) {
+        readyCount += 1;
       }
     })
-    if (allReady && this.state.players.size === 2) {
+    if (readyCount === this.maxClients) {
       this.restartGame();
     }
   }

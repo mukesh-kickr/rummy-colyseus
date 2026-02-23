@@ -40,7 +40,7 @@ export function isConsecutive(cards: Card[]): boolean{
     let isHighValid = true;
     for (let i = 1; i < sortedHigh.length; i++) {
       const diff =
-        rankValue(sortedLow[i].rank) - rankValue(sortedLow[i - 1].rank);
+        rankValue(sortedHigh[i].rank) - rankValue(sortedHigh[i - 1].rank);
       if (diff !== 1) {
         isHighValid = false;
         break;
@@ -50,13 +50,13 @@ export function isConsecutive(cards: Card[]): boolean{
     return isHighValid;
 }
 
-export function isValidSequence(cards:Card[]):boolean {
+export function isValidSequence(cards:Card[], wildJoker:Card):boolean {
     if (cards.length < 3) {
         return false;
     }
 
     
-    const nonJokers = cards.filter((card) => !card.isJoker);
+    const nonJokers = cards.filter((card) => !isCardJoker(card, wildJoker));
     if (nonJokers.length === 0) {
         return false;
     }
@@ -65,13 +65,13 @@ export function isValidSequence(cards:Card[]):boolean {
         return false;
     }
 
-    return canFormConsecutiveWithJokers(cards);
+    return canFormConsecutiveWithJokers(cards,wildJoker);
 }
 
-export function canFormConsecutiveWithJokers(cards: Card[]): boolean{
+export function canFormConsecutiveWithJokers(cards: Card[],wildJoker:Card): boolean{
     
-    const jokers = cards.filter((card) => card.isJoker);
-    const nonJokers = cards.filter((card) => !card.isJoker);
+    const jokers = cards.filter((card) => isCardJoker(card, wildJoker));
+    const nonJokers = cards.filter((card) => !isCardJoker(card,wildJoker));
 
     if (nonJokers.length === 0) {
         return true;
@@ -95,11 +95,11 @@ export function canFormConsecutiveWithJokers(cards: Card[]): boolean{
 
 }
 
-export function isValidSet(cards: Card[]): boolean{
+export function isValidSet(cards: Card[],wildJoker:Card): boolean{
     if (cards.length < 3 || cards.length > 4) {
         return false;
     }
-    const nonJokers = cards.filter((card) => !card.isJoker);
+    const nonJokers = cards.filter((card) => !isCardJoker(card, wildJoker));
     if (nonJokers.length === 0) {
         return false;
     }
@@ -112,4 +112,13 @@ export function isValidSet(cards: Card[]): boolean{
 }
 function highRankValue(rank: string): number{
     return rank === "A" ? 13 : rankValue(rank);
+}
+function isCardJoker(card: Card, wildJoker?: Card) {
+    if (card.isJoker) {
+        return true;
+    }
+    if (wildJoker && card.rank === wildJoker.rank) {
+        return true;
+    }
+    return false;
 }
