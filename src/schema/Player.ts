@@ -8,4 +8,5 @@ export class Player extends Schema{
     @type("number") score: number = 0;
     @type("boolean") hasDeclared: boolean = false;
     @type("boolean") hasDrawn: boolean = false;
+    @type("boolean") isEliminated: boolean = false;
 }
