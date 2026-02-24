@@ -66,17 +66,32 @@ export class RummyRoom extends Room<RummyState> {
     }
   }
 
-  onLeave(client: Client) {
-    console.log(client.sessionId, "left");
-
-    this.state.players.delete(client.sessionId);
-
-    if (this.clients.length < this.maxClients) {
-      this.state.status = "waiting";
-      this.state.currentTurn = "";
-
-      console.log("Game paused — waiting for second player");
+  async onLeave(client: Client, consented: boolean) {
+    const player:Player = this.state.players.get(client.sessionId)
+    if (!player) {
+      return;
     }
+    if(!consented)
+    {
+      try {
+        console.log(`Waiting 20s for ${client.sessionId} to reconnect`);
+        const reconnectedClient = await this.allowReconnection(client, 20);
+        console.log(`${reconnectedClient.sessionId} reconnected!`);
+      } catch (error) {
+        console.log(`${client.sessionId} failed to reconnect.`);
+      }
+    }
+    console.log(`${client.sessionId} permanently left the game. Consented:${consented}`)
+    player.isEliminated = true;
+    player.score += 80;
+    this.turnOrder = this.turnOrder.filter((id) => id !== client.sessionId);
+    if (this.state.currentTurn === client.sessionId && this.state.status === "playing") {
+      if (this.turnInterval) {
+        this.turnInterval.clear();
+      }
+      this.nextTurn();
+    }
+    this.checkGameOver();
   }
 
   tryStartGame() {
@@ -93,11 +108,14 @@ export class RummyRoom extends Room<RummyState> {
   }
 
   initializeGame() {
-    this.state.players.forEach((player:Player) => {
+    this.state.players.forEach((player:Player,id:string) => {
       player.hand.splice(0, player.hand.length);
       player.isReady = false;
       player.hasDrawn = false;
       player.hasDeclared = false;
+      if (!player.isEliminated) {
+        this.turnOrder.push(id);
+      }
     });
     this.state.deck.splice(0, this.state.deck.length);
     this.state.discardPile.splice(0,this.state.discardPile.length);
@@ -165,12 +183,16 @@ export class RummyRoom extends Room<RummyState> {
       return;
     }
     let readyCount = 0;
+    let aliveCount = 0;
     this.state.players.forEach((player:Player) => {
-      if (player.isReady) {
-        readyCount += 1;
+      if (!player.isEliminated) {
+        aliveCount += 1;
+        if (player.isReady) {
+          readyCount += 1;
+        }
       }
     })
-    if (readyCount === this.maxClients) {
+    if (readyCount === aliveCount && aliveCount >1) {
       this.restartGame();
     }
   }
@@ -222,4 +244,32 @@ export class RummyRoom extends Room<RummyState> {
     this.nextTurn();
     
   }
+  checkGameOver() {
+    let activePlayersCount = 0;
+    let lastPlayerStanding = "";
+    this.state.players.forEach((player: Player, id: string) => {
+      if (!player.isEliminated) {
+        activePlayersCount++;
+        lastPlayerStanding = id;
+      }
+    })
+    if (activePlayersCount === 1 && this.state.status !== "match_over") {
+      console.log(`MATCH OVER! ${lastPlayerStanding} win the match`)
+      if (this.turnInterval) {
+        this.turnInterval.clear();
+      }
+      this.state.status = "match_over";
+      this.broadcast("result", {
+        winner: lastPlayerStanding,
+        valid: true,
+        isMatchOver: true,
+        grandWinner: lastPlayerStanding,
+        reason: `All other players were eliminated or abandoned the match.`,
+      });
+      this.clock.setTimeout(() => {
+        this.disconnect()
+      }, 1000)
+    }
+  }
 }
+

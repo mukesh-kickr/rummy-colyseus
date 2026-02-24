@@ -113,7 +113,7 @@ export function isValidSet(cards: Card[],wildJoker:Card): boolean{
 function highRankValue(rank: string): number{
     return rank === "A" ? 13 : rankValue(rank);
 }
-function isCardJoker(card: Card, wildJoker?: Card) {
+export function isCardJoker(card: Card, wildJoker?: Card) {
     if (card.isJoker) {
         return true;
     }
