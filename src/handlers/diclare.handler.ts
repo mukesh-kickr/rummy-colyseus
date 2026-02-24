@@ -2,6 +2,8 @@ import { Client } from "colyseus";
 import { RummyRoom } from "../rooms/RummyRoom.js";
 import { isPureSequence, isValidSequence, isValidSet } from "../game/rules.js";
 import { Card } from "../schema/Card.js";
+import { Player } from "../schema/Player.js";
+import { calculatesPenaltyPoints } from "../game/score.js";
 
 export function handleDeclare(room: RummyRoom, client: Client, message: any) {
   const playerId = client.sessionId;
@@ -63,33 +65,39 @@ export function handleDeclare(room: RummyRoom, client: Client, message: any) {
     })
     return;
   }
-
-  let hasPureSequence = false;
+  let pureSequenceCount = 0;
+  let totalSequenceCount = 0;
   let allValid = true;
   for (const meld of melds) {
     if (isPureSequence(meld)) {
-      hasPureSequence = true;
-      break;
-    }
-  }
-
-  if (!hasPureSequence) {
-    console.log("INVALID DECLARE: No pure sequence");
-    room.broadcast("result", {
-      winner: playerId,
-      valid: false,
-      reason: "No pure sequence",
-    });
-    return;
-  }
-
-  for (const meld of melds) {
-    if (!isPureSequence(meld) && !isValidSequence(meld,wildJoker) && !isValidSet(meld,wildJoker)) {
+      pureSequenceCount++;
+      totalSequenceCount++;
+      
+    } else if (isValidSequence(meld, wildJoker)) {
+      totalSequenceCount++;
+    } else if (!isValidSet(meld, wildJoker)) {
       allValid = false;
       break;
     }
   }
-
+  if (pureSequenceCount === 0) {
+    console.log(`INVALID DECLARE: No pure sequences`);
+    room.broadcast("result", {
+      winner: playerId,
+      valid: false,
+      reason: "You need at least one Pure Sequence.",
+    });
+    return;
+  }
+  if (totalSequenceCount < 2) {
+  console.log("INVALID DECLARE: Not enough sequences");
+  room.broadcast("result", {
+    winner: playerId,
+    valid: false,
+    reason: "You must have at least TWO sequences (one pure, one pure/impure).",
+  });
+  return;
+}
   if (allValid) {
     console.log("Valid declare - win!");
     const discardIndex = player.hand.findIndex(
@@ -101,7 +109,45 @@ export function handleDeclare(room: RummyRoom, client: Client, message: any) {
     }
 
     room.state.status = "finished";
-    room.broadcast("result", { winner: playerId, valid: true });
+    const roundScores: Record<string, number> = {};
+    const POOL_LIMIT = 101;
+    let activePlayersCount = 0;
+    let lastPlayerStanding = ""
+    room.state.players.forEach((player: Player, id: string) => {
+      if (player.isEliminated) {
+        return;
+      }
+      if (id === playerId) {
+        roundScores[id] = 0;
+
+      } else {
+        const penalty = calculatesPenaltyPoints(Array.from(player.hand), wildJoker);
+        player.score += penalty;
+        roundScores[id] = penalty;
+        if (player.score >= POOL_LIMIT) {
+          player.isEliminated = true;
+          console.log("Player eliminated:", id);
+        }
+      }
+      if (!player.isEliminated) {
+        activePlayersCount++;
+        lastPlayerStanding = id;
+      }
+    })
+    const isMatchOver = activePlayersCount <= 1;
+    room.broadcast("result", {
+      winner: playerId,
+      valid: true,
+      roundScores: roundScores,
+      isMatchOver: isMatchOver,
+      grandWinner: isMatchOver ?lastPlayerStanding:null
+    });
+
+    if (isMatchOver) {
+      room.clock.setTimeout(() => {
+        room.disconnect();
+      }, 10000);
+    }
   } else {
     console.log("INVALID DECLARE: Invalid groupings");
     room.broadcast("result", {
