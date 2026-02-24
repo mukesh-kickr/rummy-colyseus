@@ -6,7 +6,7 @@ import { shuffle } from "../utils/suffle.js";
 import { selectWildJoker, applyWildJoker } from "../game/joker.js";
 import { handleDraw } from "../handlers/draw.handler.js";
 import { handleDiscard } from "../handlers/discard.handler.js";
-import { handleDeclare } from "../handlers/diclare.handler.js";
+import { handleDeclare, handleLoserDeclare } from "../handlers/diclare.handler.js";
 
 export class RummyRoom extends Room<RummyState> {
   private turnOrder: string[] = [];
@@ -49,6 +49,10 @@ export class RummyRoom extends Room<RummyState> {
         this.checkRestartGame();
       }
     })
+
+    this.onMessage("loser_declare", (client, message) =>
+      handleLoserDeclare(this, client, message),
+    );
   }
 
   onJoin(client: Client<any>, options?: any, auth?: any): void | Promise<any> {

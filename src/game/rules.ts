@@ -122,3 +122,53 @@ export function isCardJoker(card: Card, wildJoker?: Card) {
     }
     return false;
 }
+
+export function calculatesLoserPenalty(melds: Card[][], leftoverCards: Card[], wildJoker: Card): number{
+    let pureSequenceCount = 0;
+    let totalSequenceCount = 0;
+    let penalty = 0;
+    const sumCards = (cards: Card[]) => {
+        let pts = 0;
+        for (const card of cards) {
+            if (wildJoker && isCardJoker(card, wildJoker)) {
+                continue;
+            }
+            if (["A", "K", "J", "Q"].includes(card.rank)) {
+                pts += 10;
+            } else {
+                pts += parseInt(card.rank);
+            }
+        }
+        return pts;
+    }
+
+    for (const meld of melds) {
+        if (isPureSequence(meld)) {
+            pureSequenceCount++;
+            totalSequenceCount++;
+        } else if (isValidSequence(meld, wildJoker)) {
+            totalSequenceCount++;
+        }
+    }
+    penalty += sumCards(leftoverCards);
+    if (pureSequenceCount === 0) {
+        for (const meld of melds) {
+            penalty += sumCards(meld);
+        }
+        return Math.min(penalty, 80);
+    }
+    if (totalSequenceCount < 2) {
+        for (const meld of melds) {
+            if (!isPureSequence(meld)) {
+                penalty += sumCards(meld);
+            }
+        }
+        return Math.min(penalty, 80);
+    }
+    for (const meld of melds) {
+        if (!isPureSequence(meld) && !isValidSequence(meld, wildJoker) && !isValidSet(meld, wildJoker)) {
+            penalty += sumCards(meld);
+        }
+    }
+    return Math.min(penalty, 80);
+}

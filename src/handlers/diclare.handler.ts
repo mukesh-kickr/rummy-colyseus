@@ -1,9 +1,8 @@
-import { Client } from "colyseus";
+import { Client} from "colyseus";
 import { RummyRoom } from "../rooms/RummyRoom.js";
-import { isPureSequence, isValidSequence, isValidSet } from "../game/rules.js";
+import { calculatesLoserPenalty, isPureSequence, isValidSequence, isValidSet } from "../game/rules.js";
 import { Card } from "../schema/Card.js";
 import { Player } from "../schema/Player.js";
-import { calculatesPenaltyPoints } from "../game/score.js";
 
 export function handleDeclare(room: RummyRoom, client: Client, message: any) {
   const playerId = client.sessionId;
@@ -108,46 +107,19 @@ export function handleDeclare(room: RummyRoom, client: Client, message: any) {
       room.state.discardPile.push(discardedCard);
     }
 
-    room.state.status = "finished";
-    const roundScores: Record<string, number> = {};
-    const POOL_LIMIT = 101;
-    let activePlayersCount = 0;
-    let lastPlayerStanding = ""
-    room.state.players.forEach((player: Player, id: string) => {
-      if (player.isEliminated) {
-        return;
-      }
-      if (id === playerId) {
-        roundScores[id] = 0;
-
-      } else {
-        const penalty = calculatesPenaltyPoints(Array.from(player.hand), wildJoker);
-        player.score += penalty;
-        roundScores[id] = penalty;
-        if (player.score >= POOL_LIMIT) {
-          player.isEliminated = true;
-          console.log("Player eliminated:", id);
-        }
-      }
-      if (!player.isEliminated) {
-        activePlayersCount++;
-        lastPlayerStanding = id;
-      }
-    })
-    const isMatchOver = activePlayersCount <= 1;
-    room.broadcast("result", {
+    room.state.status = "loser_declaring";
+    player.hasSubmittedLoserDeclare = true;
+    room.broadcast("winner_declared", {
       winner: playerId,
-      valid: true,
-      roundScores: roundScores,
-      isMatchOver: isMatchOver,
-      grandWinner: isMatchOver ?lastPlayerStanding:null
+      message:
+        "A winner has been declared! You have 30 seconds to group your cards.",
     });
 
-    if (isMatchOver) {
-      room.clock.setTimeout(() => {
-        room.disconnect();
-      }, 10000);
-    }
+    room.clock.setTimeout(() => {
+      if (room.state.status === "loser_declaring") {
+        finalizeRound(room, playerId, wildJoker); 
+      }
+    }, 30000);
   } else {
     console.log("INVALID DECLARE: Invalid groupings");
     room.broadcast("result", {
@@ -157,3 +129,90 @@ export function handleDeclare(room: RummyRoom, client: Client, message: any) {
     });
   }
 }
+
+export function handleLoserDeclare(room: RummyRoom, client: Client, message: any) {
+  if (room.state.status !== "loser_declaring") {
+    return;
+  }
+  const player:Player = room.state.players.get(client.sessionId);
+  if (!player || player.hasSubmittedLoserDeclare) {
+    return;
+  }
+  const { melds, leftovers } = message;
+  const penalty = calculatesLoserPenalty(melds, leftovers, room.state.wildJoker);
+  (player as any).tempPenalty = penalty;
+  player.hasSubmittedLoserDeclare = true;
+  let allDone = true;
+  room.state.players.forEach((p:Player) => {
+    if (!p.isEliminated && !p.hasSubmittedLoserDeclare) {
+      allDone = false;
+    }
+  })
+  if (allDone) {
+    finalizeRound(room, client.sessionId, room.state.wildJoker);
+  }
+}
+
+export function finalizeRound( room: RummyRoom, triggerPlayerId: string, wildJoker: any,) {
+  if (room.state.status !== "loser_declaring") {
+    return;
+  }
+  room.state.status = "finished";
+
+  const roundScores: Record<string, number> = {};
+  const POOL_LIMIT = 101;
+  let activePlayersCount = 0;
+  let lastPlayerStanding = "";
+  let actualWinnerId = "";
+
+  room.state.players.forEach((p: Player, id: string) => {
+    if (
+      !p.isEliminated &&
+      p.hasSubmittedLoserDeclare &&
+      (p as any).tempPenalty === undefined
+    ) {
+      actualWinnerId = id;
+    }
+  });
+
+  room.state.players.forEach((player: any, id: string) => {
+    if (player.isEliminated) return;
+
+    if (id === actualWinnerId) {
+      roundScores[id] = 0;
+    } else {
+     
+      const finalPenalty =
+        player.tempPenalty !== undefined ? player.tempPenalty : 80;
+      player.score += finalPenalty;
+      roundScores[id] = finalPenalty;
+
+      if (player.score >= POOL_LIMIT) {
+        player.isEliminated = true;
+        console.log(`${id} eliminated!`);
+      }
+    }
+
+    player.hasSubmittedLoserDeclare = false;
+    player.tempPenalty = undefined;
+
+    if (!player.isEliminated) {
+      activePlayersCount++;
+      lastPlayerStanding = id;
+    }
+  });
+
+  const isMatchOver = activePlayersCount <= 1;
+
+  room.broadcast("result", {
+    winner: actualWinnerId,
+    valid: true,
+    roundScores: roundScores,
+    isMatchOver: isMatchOver,
+    grandWinner: isMatchOver ? lastPlayerStanding : null,
+  });
+
+  if (isMatchOver) {
+    room.clock.setTimeout(() => room.disconnect(), 10000);
+  }
+};
