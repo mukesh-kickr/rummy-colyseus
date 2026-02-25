@@ -40,7 +40,7 @@ export function isConsecutive(cards: Card[]): boolean{
     let isHighValid = true;
     for (let i = 1; i < sortedHigh.length; i++) {
       const diff =
-        rankValue(sortedHigh[i].rank) - rankValue(sortedHigh[i - 1].rank);
+        highRankValue(sortedHigh[i].rank) - highRankValue(sortedHigh[i - 1].rank);
       if (diff !== 1) {
         isHighValid = false;
         break;
